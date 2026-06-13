@@ -7,8 +7,6 @@ struct ContainerPrimer {
     static func main() async throws {
         print("Starting container primer...")
 
-        let current = try Terminal.current
-
         let initfsReference = "ghcr.io/apple/containerization/vminit:0.26.5"
         let kernelPath = "./vmlinux"
         print("Fetching base container filesystem...")
@@ -19,7 +17,8 @@ struct ContainerPrimer {
         )
 
         let containerId = "container-primer"
-        let imageReference = "docker.io/library/alpine:3.16"
+        let imageReference = "docker.io/library/python:3-alpine"
+        let port = 8080
 
         print("Creating container from \(imageReference)...")
 
@@ -30,8 +29,14 @@ struct ContainerPrimer {
         ) { @Sendable config in
             config.cpus = 2
             config.memoryInBytes = 512.mib()
-            config.process.setTerminalIO(terminal: current)
-            config.process.arguments = ["/bin/echo", "hello from container"]
+            // Serve a tiny page with Python's built-in HTTP server (no install).
+            // It stays in the foreground, keeping the container alive; output is
+            // discarded since the host terminal is not attached.
+            config.process.arguments = [
+                "/bin/sh", "-c",
+                "mkdir -p /www && echo '<h1>hello from container</h1>' > /www/index.html"
+                    + " && python3 -m http.server \(port) --directory /www >/dev/null 2>&1",
+            ]
             config.process.workingDirectory = "/"
         }
 
@@ -43,9 +48,27 @@ struct ContainerPrimer {
         try await container.create()
         try await container.start()
 
-        let exitCode = try await container.wait()
+        if let interface = container.interfaces.first {
+            let ip = interface.ipv4Address.address.description
+            print("Server running at http://\(ip):\(port)")
+        }
+        print("Press Ctrl+C to stop.")
 
-        print("Container exited with code \(exitCode)")
-        try await container.stop()
+        // Run until the server exits or we receive SIGINT/SIGTERM. On signal we
+        // stop the container, which lets wait() return and the deferred delete
+        // tear the container down so nothing is persisted.
+        let signals = AsyncSignalHandler.create(notify: [SIGINT, SIGTERM])
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await _ in signals.signals {
+                    try? await container.stop()
+                    return
+                }
+            }
+            try await container.wait()
+            group.cancelAll()
+        }
+
+        print("Container stopped, cleaning up.")
     }
 }

@@ -1,6 +1,6 @@
-SWIFT = /usr/bin/swift
+SWIFT := $(shell which swift)
 
-.PHONY: all build clean run debug fmt fetch-default-kernel
+.PHONY: all build clean run debug run-debug fmt fetch-default-kernel
 
 all: run
 
@@ -19,6 +19,9 @@ run: build
 debug:
 	$(SWIFT) build
 	codesign --force --sign - --entitlements container-primer.entitlements ./.build/debug/container-primer
+
+run-debug: debug
+	./.build/debug/container-primer
 
 fmt:
 	$(SWIFT) format --in-place --recursive Sources/

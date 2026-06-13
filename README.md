@@ -4,9 +4,10 @@ An exploration of Apple's [Containerization](https://github.com/apple/containeri
 framework — learning how to boot lightweight Linux VMs and run containers from Swift on
 Apple silicon.
 
-This first step is a SUUUUUPER simple smoke test: it boots an Alpine image, runs a single
-`echo` command inside the container, prints the exit code, and exits. More to come as the
-exploration continues.
+It boots a `python:3-alpine` image, starts a tiny HTTP server inside the container, and
+prints a URL you can open from the host (vmnet shared mode makes the container's IP
+reachable from macOS). The container keeps running until you press Ctrl+C, then it is
+stopped and deleted — nothing is persisted. More to come as the exploration continues.
 
 ## Requirements
 
@@ -34,16 +35,22 @@ make
 `com.apple.security.virtualization` entitlement (required — the Virtualization API fails at
 runtime without it), then runs the binary.
 
+For a faster iteration loop, `make run-debug` does the same (build, sign, run) using the
+debug configuration.
+
 Expected output:
 
 ```
 Starting container primer...
 Fetching base container filesystem...
-Creating container from docker.io/library/alpine:3.16...
+Creating container from docker.io/library/python:3-alpine...
 Starting container...
-hello from container
-Container exited with code 0
+Server running at http://192.168.64.2:8080
+Press Ctrl+C to stop.
 ```
+
+Open the printed URL (or `curl` it) to get `hello from container`. Press Ctrl+C to stop
+the server and tear the container down.
 
 ## Notes
 
