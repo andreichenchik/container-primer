@@ -1,2 +1,5 @@
-FROM docker.io/library/python:3-alpine
-COPY server.py /server.py
+FROM docker.io/library/node:22-slim
+WORKDIR /app
+COPY package.json ./
+RUN npm install
+COPY server.ts ./

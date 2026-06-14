@@ -4,19 +4,23 @@ An exploration of Apple's [Containerization](https://github.com/apple/containeri
 framework — learning how to boot lightweight Linux VMs and run containers from Swift on
 Apple silicon.
 
-It builds a local container image from `image/` (a `Dockerfile` based on `python:3-alpine`
-that bakes in `image/server.py`), exports it to an OCI archive (`image.tar`), and loads that
-archive into the image store instead of pulling from a registry. It then mounts the host
-`workspace/` directory into the container over virtiofs at `/workspace`, and runs the baked-in
-`/server.py` to serve that directory over HTTP. It prints a URL you can open from the host
-(vmnet shared mode makes the container's IP reachable from macOS). The container keeps running
-until you press Ctrl+C, then it is stopped and deleted — nothing is persisted. More to come as
-the exploration continues.
+![ContainerPrimer web UI: ask a question about the mounted workspace and a pi agent answers](preview.png)
 
-Because `workspace/` is a live mount, editing `workspace/index.html` on the host changes what
-the running container serves on the next request — no rebuild needed. Editing `image/server.py`
-is different: it is baked into the image, so it needs an image rebuild (`make clear-image &&
-make`), not just a restart.
+It builds a local container image from `image/` (a `Dockerfile` based on `node:22-slim` that
+bakes in a small TypeScript app, `image/server.ts`), exports it to an OCI archive (`image.tar`),
+and loads that archive into the image store instead of pulling from a registry. It then mounts
+the host `workspace/` directory into the container over virtiofs at `/workspace`, and runs the
+baked-in app to serve a web page. The page has a question box; on submit it spins up a fresh
+[pi](https://pi.dev) coding-agent session (configured with an OpenAI-compatible endpoint via env
+vars) that can read `/workspace`, and shows the agent's answer. It prints a URL you can open from
+the host (vmnet shared mode makes the container's IP reachable from macOS). The container keeps
+running until you press Ctrl+C, then it is stopped and deleted — nothing is persisted. More to
+come as the exploration continues.
+
+Because `workspace/` is a live mount, editing files under `workspace/` on the host changes what
+the agent reads on the next request — no rebuild needed. Editing `image/server.ts` (or
+`image/package.json`) is different: it is baked into the image, so it needs an image rebuild
+(`make clear-image && make`), not just a restart.
 
 ## Requirements
 
@@ -28,9 +32,24 @@ make`), not just a restart.
 
 ## Build & Run
 
-Build the image, build the binary, codesign, and run:
+The agent needs an OpenAI-compatible endpoint, passed through three env vars that the launcher
+forwards into the container: `OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
+
+The launcher loads a `.env` file from the project root on startup, so the simplest setup is to
+copy `.env.example` to `.env` and fill it in:
 
 ```bash
+cp .env.example .env   # then edit .env
+make
+```
+
+Existing shell environment variables take precedence over `.env`, so you can also pass them
+inline instead:
+
+```bash
+OPENAI_BASE_URL=https://api.openai.com/v1 \
+OPENAI_API_KEY=sk-... \
+OPENAI_MODEL=gpt-4o-mini \
 make
 ```
 
@@ -39,12 +58,13 @@ make
 runtime without it), build the container image into `image.tar`, then run the binary. Run it
 from the project root so the host `workspace/` directory and `image.tar` resolve.
 
-The container image is built from `image/` (Dockerfile + `server.py`) via `docker buildx` and
-exported as an OCI archive to `image.tar` (target: `make image.tar`). It is rebuilt only when
-missing or when `image/Dockerfile` or `image/server.py` changes. The first build bootstraps a
-dedicated `docker-container` buildx builder
-(`primer-builder`), needed because the OCI exporter is unsupported on the default docker driver.
-Use `make clear-image` to delete `image.tar` and prune the builder's cache.
+The container image is built from `image/` (Dockerfile + `server.ts` + `package.json`) via
+`docker buildx` and exported as an OCI archive to `image.tar` (target: `make image.tar`). It is
+rebuilt only when missing or when any file under `image/` changes. The build runs `npm install`,
+so it needs network and produces a larger image than the previous python-based one. The first
+build bootstraps a dedicated `docker-container` buildx builder (`primer-builder`), needed because
+the OCI exporter is unsupported on the default docker driver. Use `make clear-image` to delete
+`image.tar` and prune the builder's cache.
 
 The first build also fetches the Linux kernel into `./.vmlinux` (needs network); this is a
 dependency of `make`/`make release` and is skipped once the file exists. Run it explicitly
@@ -55,11 +75,6 @@ without running (and without building the image), use `make build-debug` or `mak
 
 Each run uses a unique container id (`primer-<uuid>`), so several instances can run in
 parallel — each container gets its own IP, all serving on port 8080.
-
-Set the optional `PRIMER_HEADER` env var at run time to forward a value into the
-container: `PRIMER_HEADER=hello make`. When set, the launcher passes it into the
-container's process environment and `server.py` adds it to every response as
-`X-Primer-Header: hello` (verify with `curl -I`). When unset, serving is unchanged.
 
 Expected output:
 
@@ -73,8 +88,9 @@ Server running at http://192.168.64.2:8080
 Press Ctrl+C to stop.
 ```
 
-Open the printed URL (or `curl` it) to get the `workspace/index.html` page. Press Ctrl+C
-to stop the server and tear the container down.
+Open the printed URL to get the question page, type a question about the workspace (e.g.
+"What files are in the workspace?"), and the agent's answer appears below. Press Ctrl+C to
+stop the server and tear the container down.
 
 ## Notes
 

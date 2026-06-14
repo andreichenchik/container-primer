@@ -3,9 +3,45 @@ import ContainerizationArchive
 import ContainerizationOS
 import Foundation
 
+/// Forwards container process output to a host file handle (stdout/stderr) so the
+/// server's logs are visible on the host terminal.
+final class HostWriter: @unchecked Sendable, Writer {
+    private let handle: FileHandle
+    init(_ handle: FileHandle) { self.handle = handle }
+    func write(_ data: Data) throws {
+        guard !data.isEmpty else { return }
+        try handle.write(contentsOf: data)
+    }
+    func close() throws {}
+}
+
 @main
 struct ContainerPrimer {
+    /// Load `KEY=VALUE` pairs from a `.env` file in the current directory into the
+    /// process environment. Existing environment variables take precedence, so the
+    /// shell can still override `.env`. Missing file is a no-op.
+    static func loadDotEnv() {
+        let path = FileManager.default.currentDirectoryPath + "/.env"
+        guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else { return }
+        for rawLine in contents.split(separator: "\n", omittingEmptySubsequences: true) {
+            var line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix("#") { continue }
+            if line.hasPrefix("export ") { line.removeFirst("export ".count) }
+            guard let eq = line.firstIndex(of: "=") else { continue }
+            let key = line[..<eq].trimmingCharacters(in: .whitespaces)
+            var value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
+            if value.count >= 2,
+                (value.hasPrefix("\"") && value.hasSuffix("\""))
+                    || (value.hasPrefix("'") && value.hasSuffix("'"))
+            {
+                value = String(value.dropFirst().dropLast())
+            }
+            if !key.isEmpty { setenv(key, value, 0) }
+        }
+    }
+
     static func main() async throws {
+        loadDotEnv()
         print("Starting container primer...")
 
         let initfsReference = "ghcr.io/apple/containerization/vminit:0.26.5"
@@ -66,16 +102,20 @@ struct ContainerPrimer {
         ) { @Sendable config in
             config.cpus = 2
             config.memoryInBytes = 512.mib()
-            // Mount the host `workspace/` read-only; the image's baked-in server
-            // serves it, so host edits there show up live.
+            // Mount the host `workspace/` read-only; the agent reads it live, so
+            // host edits there are visible without a rebuild.
             config.mounts.append(
                 .share(source: workspacePath, destination: "/workspace", options: ["ro"]))
-            config.process.arguments = ["python3", "/server.py", "\(port)"]
-            config.process.workingDirectory = "/"
-            // Forward an optional host env var into the container so server.py can
-            // pick it up (demonstrates env passthrough).
-            if let header = ProcessInfo.processInfo.environment["PRIMER_HEADER"] {
-                config.process.environmentVariables.append("PRIMER_HEADER=\(header)")
+            config.process.arguments = ["npx", "tsx", "/app/server.ts", "\(port)"]
+            config.process.workingDirectory = "/app"
+            // Surface the container's logs on the host terminal.
+            config.process.stdout = HostWriter(.standardOutput)
+            config.process.stderr = HostWriter(.standardError)
+            // Forward the OpenAI-compatible endpoint config the agent needs.
+            for key in ["OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL"] {
+                if let value = ProcessInfo.processInfo.environment[key] {
+                    config.process.environmentVariables.append("\(key)=\(value)")
+                }
             }
         }
 

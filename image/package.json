@@ -1,0 +1,9 @@
+{
+  "name": "primer-agent",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.78.1",
+    "tsx": "4.19.2"
+  }
+}
