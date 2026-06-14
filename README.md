@@ -56,6 +56,11 @@ without running (and without building the image), use `make build-debug` or `mak
 Each run uses a unique container id (`primer-<uuid>`), so several instances can run in
 parallel — each container gets its own IP, all serving on port 8080.
 
+Set the optional `PRIMER_HEADER` env var at run time to forward a value into the
+container: `PRIMER_HEADER=hello make`. When set, the launcher passes it into the
+container's process environment and `server.py` adds it to every response as
+`X-Primer-Header: hello` (verify with `curl -I`). When unset, serving is unchanged.
+
 Expected output:
 
 ```

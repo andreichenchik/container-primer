@@ -72,6 +72,11 @@ struct ContainerPrimer {
                 .share(source: workspacePath, destination: "/workspace", options: ["ro"]))
             config.process.arguments = ["python3", "/server.py", "\(port)"]
             config.process.workingDirectory = "/"
+            // Forward an optional host env var into the container so server.py can
+            // pick it up (demonstrates env passthrough).
+            if let header = ProcessInfo.processInfo.environment["PRIMER_HEADER"] {
+                config.process.environmentVariables.append("PRIMER_HEADER=\(header)")
+            }
         }
 
         defer {
