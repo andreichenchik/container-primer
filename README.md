@@ -4,17 +4,19 @@ An exploration of Apple's [Containerization](https://github.com/apple/containeri
 framework — learning how to boot lightweight Linux VMs and run containers from Swift on
 Apple silicon.
 
-It builds a local container image from the `Dockerfile` (just `FROM python:3-alpine`),
-exports it to an OCI archive (`image.tar`), and loads that archive into the image store
-instead of pulling from a registry. It then mounts the host `src/` directory into the
-container over virtiofs, and runs `src/server.py` to serve `src/public/` over HTTP. It
-prints a URL you can open from the host (vmnet shared mode makes the container's IP
-reachable from macOS). The container keeps running until you press Ctrl+C, then it is
-stopped and deleted — nothing is persisted. More to come as the exploration continues.
+It builds a local container image from `image/` (a `Dockerfile` based on `python:3-alpine`
+that bakes in `image/server.py`), exports it to an OCI archive (`image.tar`), and loads that
+archive into the image store instead of pulling from a registry. It then mounts the host
+`workspace/` directory into the container over virtiofs at `/workspace`, and runs the baked-in
+`/server.py` to serve that directory over HTTP. It prints a URL you can open from the host
+(vmnet shared mode makes the container's IP reachable from macOS). The container keeps running
+until you press Ctrl+C, then it is stopped and deleted — nothing is persisted. More to come as
+the exploration continues.
 
-Because `src/` is a live mount, editing `src/public/index.html` on the host changes what
-the running container serves on the next request — no rebuild needed. Editing `server.py`
-itself needs a restart (Ctrl+C, then re-run), since the Python process is already running.
+Because `workspace/` is a live mount, editing `workspace/index.html` on the host changes what
+the running container serves on the next request — no rebuild needed. Editing `image/server.py`
+is different: it is baked into the image, so it needs an image rebuild (`make clear-image &&
+make`), not just a restart.
 
 ## Requirements
 
@@ -35,11 +37,12 @@ make
 `make` runs several steps: `swift build` (debug), `codesign` with the
 `com.apple.security.virtualization` entitlement (required — the Virtualization API fails at
 runtime without it), build the container image into `image.tar`, then run the binary. Run it
-from the project root so the host `src/` directory and `image.tar` resolve.
+from the project root so the host `workspace/` directory and `image.tar` resolve.
 
-The container image is built from the `Dockerfile` via `docker buildx` and exported as an OCI
-archive to `image.tar` (target: `make image.tar`). It is rebuilt only when missing or when the
-`Dockerfile` changes. The first build bootstraps a dedicated `docker-container` buildx builder
+The container image is built from `image/` (Dockerfile + `server.py`) via `docker buildx` and
+exported as an OCI archive to `image.tar` (target: `make image.tar`). It is rebuilt only when
+missing or when `image/Dockerfile` or `image/server.py` changes. The first build bootstraps a
+dedicated `docker-container` buildx builder
 (`primer-builder`), needed because the OCI exporter is unsupported on the default docker driver.
 Use `make clear-image` to delete `image.tar` and prune the builder's cache.
 
@@ -65,7 +68,7 @@ Server running at http://192.168.64.2:8080
 Press Ctrl+C to stop.
 ```
 
-Open the printed URL (or `curl` it) to get the `src/public/index.html` page. Press Ctrl+C
+Open the printed URL (or `curl` it) to get the `workspace/index.html` page. Press Ctrl+C
 to stop the server and tear the container down.
 
 ## Notes

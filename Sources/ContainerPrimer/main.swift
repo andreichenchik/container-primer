@@ -22,13 +22,13 @@ struct ContainerPrimer {
         let port = 8080
 
         // Host directory shared into the container over virtiofs. `make` runs from
-        // the project root, so cwd/src is correct; an optional first argument lets
-        // you point elsewhere (e.g. when running the binary from /var/tmp).
-        let srcPath =
+        // the project root, so cwd/workspace is correct; an optional first argument
+        // lets you point elsewhere (e.g. when running the binary from /var/tmp).
+        let workspacePath =
             CommandLine.arguments.dropFirst().first
-            ?? FileManager.default.currentDirectoryPath + "/src"
-        guard FileManager.default.fileExists(atPath: srcPath) else {
-            fatalError("source directory not found: \(srcPath)")
+            ?? FileManager.default.currentDirectoryPath + "/workspace"
+        guard FileManager.default.fileExists(atPath: workspacePath) else {
+            fatalError("workspace directory not found: \(workspacePath)")
         }
 
         // Load the image from a locally built OCI archive instead of pulling from a
@@ -66,10 +66,11 @@ struct ContainerPrimer {
         ) { @Sendable config in
             config.cpus = 2
             config.memoryInBytes = 512.mib()
-            // Mount the host `src/` read-only and run the Python server from it.
-            // The server serves src/public/, so host edits there show up live.
-            config.mounts.append(.share(source: srcPath, destination: "/src", options: ["ro"]))
-            config.process.arguments = ["python3", "/src/server.py", "\(port)"]
+            // Mount the host `workspace/` read-only; the image's baked-in server
+            // serves it, so host edits there show up live.
+            config.mounts.append(
+                .share(source: workspacePath, destination: "/workspace", options: ["ro"]))
+            config.process.arguments = ["python3", "/server.py", "\(port)"]
             config.process.workingDirectory = "/"
         }
 
