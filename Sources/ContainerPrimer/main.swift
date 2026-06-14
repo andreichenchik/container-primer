@@ -1,4 +1,5 @@
 import Containerization
+import ContainerizationArchive
 import ContainerizationOS
 import Foundation
 
@@ -18,7 +19,6 @@ struct ContainerPrimer {
 
         // Unique per run so multiple instances can run in parallel.
         let containerId = "primer-\(UUID().uuidString)"
-        let imageReference = "docker.io/library/python:3-alpine"
         let port = 8080
 
         // Host directory shared into the container over virtiofs. `make` runs from
@@ -31,11 +31,37 @@ struct ContainerPrimer {
             fatalError("source directory not found: \(srcPath)")
         }
 
-        print("Creating container from \(imageReference)...")
+        // Load the image from a locally built OCI archive instead of pulling from a
+        // registry. Build it with `make image.tar` (see Makefile/Dockerfile).
+        let imageTarPath = FileManager.default.currentDirectoryPath + "/image.tar"
+        guard FileManager.default.fileExists(atPath: imageTarPath) else {
+            fatalError("image archive not found: \(imageTarPath). Run `make image.tar`.")
+        }
+
+        print("Loading image from \(imageTarPath)...")
+
+        // The archive is an OCI layout; extract it to a temp dir, then load into the
+        // image store (mirrors `cctl image load`).
+        let extractDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("primer-image-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: extractDir)
+        }
+
+        let reader = try ArchiveReader(file: URL(fileURLWithPath: imageTarPath))
+        _ = try reader.extractContents(to: extractDir)
+
+        let images = try await manager.imageStore.load(from: extractDir)
+        guard let image = images.first else {
+            fatalError("no image found in \(imageTarPath)")
+        }
+
+        print("Creating container from \(image.reference)...")
 
         let container = try await manager.create(
             containerId,
-            reference: imageReference,
+            image: image,
             rootfsSizeInBytes: 1.gib()
         ) { @Sendable config in
             config.cpus = 2

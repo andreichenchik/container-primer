@@ -1,3 +1,4 @@
 .build/
 /.vmlinux
 /.local/
+/image.tar
