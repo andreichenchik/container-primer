@@ -1,31 +1,33 @@
 SWIFT := $(shell which swift)
 
-.PHONY: all build clean run debug run-debug fmt fetch-default-kernel
+.PHONY: all build-debug build-release release clean debug fmt first-setup
 
-all: run
+all: debug
 
-build:
+build-release: .vmlinux
 	$(SWIFT) build --configuration release
 	codesign --force --sign - --entitlements container-primer.entitlements ./.build/release/container-primer
-	cp ./.build/release/container-primer ./container-primer
+
+release: build-release
+	./.build/release/container-primer
 
 clean:
 	$(SWIFT) package clean
-	rm -f ./container-primer
+	rm -rf ./build/debug
+	rm -rf ./build/release
 
-run: build
-	./container-primer
-
-debug:
+build-debug: .vmlinux
 	$(SWIFT) build
 	codesign --force --sign - --entitlements container-primer.entitlements ./.build/debug/container-primer
 
-run-debug: debug
+debug: build-debug
 	./.build/debug/container-primer
 
 fmt:
 	$(SWIFT) format --in-place --recursive Sources/
 
-fetch-default-kernel:
+first-setup: .vmlinux
+
+.vmlinux:
 	$(MAKE) -C ../containerization fetch-default-kernel
-	cp -L ../containerization/.local/vmlinux ./vmlinux
+	cp -L ../containerization/.local/vmlinux ./.vmlinux

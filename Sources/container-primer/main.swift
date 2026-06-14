@@ -8,7 +8,7 @@ struct ContainerPrimer {
         print("Starting container primer...")
 
         let initfsReference = "ghcr.io/apple/containerization/vminit:0.26.5"
-        let kernelPath = "./vmlinux"
+        let kernelPath = "./.vmlinux"
         print("Fetching base container filesystem...")
         var manager = try await ContainerManager(
             kernel: Kernel(path: URL(fileURLWithPath: kernelPath), platform: .linuxArm),
@@ -16,9 +16,20 @@ struct ContainerPrimer {
             network: try VmnetNetwork()
         )
 
-        let containerId = "container-primer"
+        // Unique per run so multiple instances can run in parallel.
+        let containerId = "primer-\(UUID().uuidString)"
         let imageReference = "docker.io/library/python:3-alpine"
         let port = 8080
+
+        // Host directory shared into the container over virtiofs. `make` runs from
+        // the project root, so cwd/src is correct; an optional first argument lets
+        // you point elsewhere (e.g. when running the binary from /var/tmp).
+        let srcPath =
+            CommandLine.arguments.dropFirst().first
+            ?? FileManager.default.currentDirectoryPath + "/src"
+        guard FileManager.default.fileExists(atPath: srcPath) else {
+            fatalError("source directory not found: \(srcPath)")
+        }
 
         print("Creating container from \(imageReference)...")
 
@@ -29,14 +40,10 @@ struct ContainerPrimer {
         ) { @Sendable config in
             config.cpus = 2
             config.memoryInBytes = 512.mib()
-            // Serve a tiny page with Python's built-in HTTP server (no install).
-            // It stays in the foreground, keeping the container alive; output is
-            // discarded since the host terminal is not attached.
-            config.process.arguments = [
-                "/bin/sh", "-c",
-                "mkdir -p /www && echo '<h1>hello from container</h1>' > /www/index.html"
-                    + " && python3 -m http.server \(port) --directory /www >/dev/null 2>&1",
-            ]
+            // Mount the host `src/` read-only and run the Python server from it.
+            // The server serves src/public/, so host edits there show up live.
+            config.mounts.append(.share(source: srcPath, destination: "/src", options: ["ro"]))
+            config.process.arguments = ["python3", "/src/server.py", "\(port)"]
             config.process.workingDirectory = "/"
         }
 

@@ -1,3 +1,2 @@
 .build/
-/vmlinux
-/container-primer
+/.vmlinux
