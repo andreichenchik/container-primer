@@ -1,4 +1,4 @@
-# container-primer
+# ContainerPrimer
 
 An exploration of Apple's [Containerization](https://github.com/apple/containerization)
 framework — learning how to boot lightweight Linux VMs and run containers from Swift on
@@ -19,8 +19,6 @@ itself needs a restart (Ctrl+C, then re-run), since the Python process is alread
 - Mac with Apple silicon
 - macOS 26+
 - Xcode 26+ / Swift 6.2+
-- A sibling checkout of [apple/containerization](https://github.com/apple/containerization)
-  at `../containerization` (this package depends on it via a local path)
 
 ## Build & Run
 
@@ -61,8 +59,6 @@ to stop the server and tear the container down.
 
 ## Notes
 
-- If you hit `vmnet_return_t(1001)` on first run, copy `./.build/debug/container-primer` to
-  `/var/tmp` and run it there, passing the absolute path to `src/`, e.g.
-  `./container-primer /Users/you/.../container-primer/src`.
-- The kernel is fetched into `./.vmlinux` (gitignored) from the containerization repo's
-  default kernel.
+- The kernel is fetched into `./.vmlinux` (gitignored) from the pinned
+  [Kata Containers](https://github.com/kata-containers/kata-containers) release
+  (`kata-static-3.17.0-arm64`).

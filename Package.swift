@@ -2,22 +2,22 @@
 import PackageDescription
 
 let package = Package(
-    name: "container-primer",
+    name: "ContainerPrimer",
     platforms: [
         .macOS("26.0")
     ],
     products: [
         .executable(
-            name: "container-primer",
-            targets: ["container-primer"]
+            name: "ContainerPrimer",
+            targets: ["ContainerPrimer"]
         )
     ],
     dependencies: [
-        .package(path: "../containerization")
+        .package(url: "https://github.com/apple/containerization", exact: "0.33.4")
     ],
     targets: [
         .executableTarget(
-            name: "container-primer",
+            name: "ContainerPrimer",
             dependencies: [
                 .product(name: "Containerization", package: "containerization"),
                 .product(name: "ContainerizationOS", package: "containerization"),
