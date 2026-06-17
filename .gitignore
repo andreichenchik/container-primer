@@ -1,5 +1,3 @@
 .build/
-/.vmlinux
 /.local/
-/image.tar
 /.env
