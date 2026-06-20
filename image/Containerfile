@@ -1,5 +1,15 @@
-FROM docker.io/library/node:22-slim
+# Bun image; tags: https://hub.docker.com/r/oven/bun/tags
+FROM oven/bun:1 AS base
 WORKDIR /app
-COPY package.json ./
-RUN npm install
-COPY server.ts ./
+
+# Production deps into a temp dir (cached across builds).
+FROM base AS install
+COPY package.json bun.lock /temp/prod/
+RUN cd /temp/prod && bun install --frozen-lockfile --production
+
+# Final image: prod deps + source. Bun runs the TypeScript directly.
+FROM base AS release
+COPY --from=install /temp/prod/node_modules node_modules
+COPY server.ts index.html package.json ./
+EXPOSE 8080
+ENTRYPOINT ["bun", "run", "server.ts"]

@@ -1,12 +1,13 @@
-import { createServer } from "node:http";
+import { Hono } from "hono";
 import {
 	AuthStorage,
 	createAgentSession,
 	ModelRegistry,
 	SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import PAGE from "./index.html" with { type: "text" };
 
-const PORT = Number(process.argv[2] ?? 8080);
+const PORT = Number(process.env.PORT ?? 8080);
 const WORKSPACE = "/workspace";
 const PROVIDER = "openai";
 
@@ -99,73 +100,18 @@ async function ask(question: string): Promise<string> {
 	}
 }
 
-const PAGE = `<!doctype html>
-<html>
-	<head>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>Primer Agent</title>
-		<style>
-			body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; padding: 0 1rem; }
-			form { display: flex; gap: 0.5rem; }
-			input { flex: 1; padding: 0.5rem; font-size: 1rem; }
-			button { padding: 0.5rem 1rem; font-size: 1rem; }
-			#out { white-space: pre-wrap; margin-top: 1.5rem; padding: 1rem; background: #f4f4f4; border-radius: 6px; min-height: 2rem; }
-		</style>
-	</head>
-	<body>
-		<h1>Ask the workspace</h1>
-		<form id="f">
-			<input id="q" name="q" placeholder="Ask a question about /workspace…" autofocus />
-			<button type="submit">Ask</button>
-		</form>
-		<div id="out"></div>
-		<script>
-			const f = document.getElementById("f");
-			const q = document.getElementById("q");
-			const out = document.getElementById("out");
-			f.addEventListener("submit", async (e) => {
-				e.preventDefault();
-				const question = q.value.trim();
-				if (!question) return;
-				out.textContent = "Thinking…";
-				try {
-					const res = await fetch("/ask", { method: "POST", body: question });
-					const text = await res.text();
-					out.textContent = text;
-				} catch (err) {
-					out.textContent = "Request failed: " + err;
-				}
-			});
-		</script>
-	</body>
-</html>
-`;
+const app = new Hono();
 
-const server = createServer((req, res) => {
-	if (req.method === "GET" && req.url === "/") {
-		res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-		res.end(PAGE);
-		return;
+app.get("/", (c) => c.html(PAGE));
+
+app.post("/ask", async (c) => {
+	try {
+		return c.text(await ask((await c.req.text()).trim()));
+	} catch (err) {
+		return c.text(`error: ${err instanceof Error ? err.message : String(err)}`, 500);
 	}
-	if (req.method === "POST" && req.url === "/ask") {
-		let body = "";
-		req.on("data", (chunk) => {
-			body += chunk;
-		});
-		req.on("end", async () => {
-			try {
-				const answer = await ask(body.trim());
-				res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-				res.end(answer);
-			} catch (err) {
-				res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
-				res.end(`error: ${err instanceof Error ? err.message : String(err)}`);
-			}
-		});
-		return;
-	}
-	res.writeHead(404).end();
 });
 
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+console.log(`Server running on port ${PORT}`);
+
+export default { port: PORT, fetch: app.fetch };

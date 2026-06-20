@@ -11,10 +11,10 @@ read the mounted `workspace/` directory.
 - Builds the container image from `image/` into `.local/image.tar`.
 - Prepares `.local/rootfs.ext4`, a cached Linux filesystem for the image, then clones it for each
   run to avoid unpacking the image every startup.
-- Boots with `.local/vmlinux`, mounts `workspace/` read-only at `/workspace`, and runs the baked-in
-  TypeScript app.
-- Loads OpenAI-compatible endpoint settings from `.env`, with shell environment variables taking
-  precedence.
+- Boots with `.local/vmlinux`, mounts `workspace/` read-only at `/workspace`, and runs the image's
+  own entrypoint (a Bun + Hono TypeScript app).
+- The launcher is image-agnostic: it forwards every variable declared in `.env` into the container
+  (shell environment variables take precedence) and runs whatever the image's `ENTRYPOINT` defines.
 
 Editing `workspace/` affects the next request without a rebuild. Editing `image/` requires
 `make clear-image && make`.
@@ -50,3 +50,8 @@ Open the printed URL and press Ctrl+C to stop the container.
 
 Generated files live under `.local/` and are gitignored: the OCI archive, cached rootfs, and Linux
 kernel. More granular build/cleanup targets are available in the Makefile when needed.
+
+## Troubleshooting
+
+If startup misbehaves — e.g. a `vmnet` network error or a stale rootfs — it is usually leftover
+state from an interrupted run. Reset and rebuild with `make clear && make`.

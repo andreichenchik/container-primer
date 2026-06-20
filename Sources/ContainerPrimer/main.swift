@@ -117,11 +117,14 @@ struct ContainerPrimer: AsyncParsableCommand {
   }
 
   /// Load `KEY=VALUE` pairs from a `.env` file in the current directory into the
-  /// process environment. Existing environment variables take precedence, so the
-  /// shell can still override `.env`. Missing file is a no-op.
-  static func loadDotEnv() {
+  /// process environment and return the keys it declared. Existing environment
+  /// variables take precedence, so the shell can still override `.env`. Missing
+  /// file is a no-op. The returned keys are the launcher's contract for which
+  /// variables to forward into the container.
+  static func loadDotEnv() -> [String] {
     let path = FileManager.default.currentDirectoryPath + "/.env"
-    guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else { return }
+    guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else { return [] }
+    var keys: [String] = []
     for rawLine in contents.split(separator: "\n", omittingEmptySubsequences: true) {
       var line = rawLine.trimmingCharacters(in: .whitespaces)
       if line.isEmpty || line.hasPrefix("#") { continue }
@@ -135,8 +138,12 @@ struct ContainerPrimer: AsyncParsableCommand {
       {
         value = String(value.dropFirst().dropLast())
       }
-      if !key.isEmpty { setenv(key, value, 0) }
+      if !key.isEmpty {
+        setenv(key, value, 0)
+        keys.append(key)
+      }
     }
+    return keys
   }
 
   private static func prepare(force: Bool) async throws {
@@ -196,7 +203,7 @@ struct ContainerPrimer: AsyncParsableCommand {
   }
 
   private static func run(workspacePath explicitWorkspacePath: String?) async throws {
-    loadDotEnv()
+    let envKeys = loadDotEnv()
     print("Starting container primer...")
 
     let paths = Paths()
@@ -212,7 +219,6 @@ struct ContainerPrimer: AsyncParsableCommand {
 
     // Unique per run so multiple instances can run in parallel.
     let containerId = "primer-\(UUID().uuidString)"
-    let port = 8080
 
     // Host directory shared into the container over virtiofs. `make` runs from
     // the project root, so cwd/workspace is correct; an optional first argument
@@ -255,13 +261,13 @@ struct ContainerPrimer: AsyncParsableCommand {
       // host edits there are visible without a rebuild.
       config.mounts.append(
         .share(source: workspacePath, destination: "/workspace", options: ["ro"]))
-      config.process.arguments = ["npx", "tsx", "/app/server.ts", "\(port)"]
-      config.process.workingDirectory = "/app"
+      // The command, working directory, and base environment come from the image
+      // (ENTRYPOINT / WORKDIR / ENV); the launcher stays agnostic to what runs.
       // Surface the container's logs on the host terminal.
       config.process.stdout = HostWriter(.standardOutput)
       config.process.stderr = HostWriter(.standardError)
-      // Forward the OpenAI-compatible endpoint config the agent needs.
-      for key in ["OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL"] {
+      // Forward every variable declared in `.env` (shell overrides still win).
+      for key in envKeys {
         if let value = ProcessInfo.processInfo.environment[key] {
           config.process.environmentVariables.append("\(key)=\(value)")
         }
@@ -277,8 +283,7 @@ struct ContainerPrimer: AsyncParsableCommand {
     try await container.start()
 
     if let interface = container.interfaces.first {
-      let ip = interface.ipv4Address.address.description
-      print("Server running at http://\(ip):\(port)")
+      print("Container available at \(interface.ipv4Address.address.description)")
     }
     print("Press Ctrl+C to stop.")
 
