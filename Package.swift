@@ -25,6 +25,10 @@ let package = Package(
                 .product(name: "ContainerizationOS", package: "containerization"),
                 .product(name: "ContainerizationArchive", package: "containerization"),
             ]
-        )
+        ),
+        .testTarget(
+            name: "ContainerPrimerTests",
+            dependencies: ["ContainerPrimer"]
+        ),
     ]
 )
