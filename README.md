@@ -24,7 +24,7 @@ Editing `workspace/` affects the next request without a rebuild. Editing `image/
 - Apple silicon Mac
 - macOS 26+
 - Xcode 26+ / Swift 6.2+
-- Docker CLI with `buildx` (Docker Desktop works)
+- Podman, or Docker CLI with `buildx` (the build auto-selects whichever is running)
 
 ## Quick Start
 
@@ -48,6 +48,5 @@ Open the printed URL and press Ctrl+C to stop the container.
 - `make prepare`: refresh `.local/rootfs.ext4` without running the app.
 - `make clear`: remove generated artifacts except `.local/vmlinux`.
 
-Generated files live under `.local/` and are gitignored: the OCI archive, cached rootfs, Linux
-kernel, and benchmark logs. More granular build/cleanup targets are available in the Makefile when
-needed.
+Generated files live under `.local/` and are gitignored: the OCI archive, cached rootfs, and Linux
+kernel. More granular build/cleanup targets are available in the Makefile when needed.

@@ -1,5 +1,4 @@
 SWIFT := $(shell which swift)
-DOCKER := $(shell which docker)
 
 KATA_VERSION := 3.17.0
 KATA_URL := https://github.com/kata-containers/kata-containers/releases/download/$(KATA_VERSION)/kata-static-$(KATA_VERSION)-arm64.tar.xz
@@ -11,6 +10,7 @@ KERNEL := .local/vmlinux
 SWIFT_SOURCE_INPUTS := $(shell find Sources -type d -o -type f)
 SWIFT_PACKAGE_FILES := Package.swift Package.resolved ContainerPrimer.entitlements
 IMAGE_INPUTS := $(shell find image -type d -o -type f)
+export IMAGE_TAG IMAGE_TAR BUILDX_BUILDER
 
 .PHONY: all build-debug build-release release clear clear-dist debug fmt first-setup prepare clear-image clear-rootfs
 
@@ -46,23 +46,15 @@ debug: build-debug prepare
 prepare: build-release $(IMAGE_TAR)
 	./.build/release/ContainerPrimer prepare
 
-# Build the container image as an OCI archive. Bootstraps a docker-container
-# buildx builder (idempotent) because the OCI exporter is unsupported on
-# Colima's default docker driver.
+# Build the container image as an OCI archive. The script auto-selects a working
+# container engine (prefers Podman, falls back to Docker).
 .local/image.tar: $(IMAGE_INPUTS)
-	@mkdir -p .local
-	$(DOCKER) buildx inspect $(BUILDX_BUILDER) >/dev/null 2>&1 || \
-		$(DOCKER) buildx create --name $(BUILDX_BUILDER) --driver docker-container
-	$(DOCKER) buildx build --builder $(BUILDX_BUILDER) \
-		--platform linux/arm64 \
-		--provenance=false --sbom=false \
-		-t $(IMAGE_TAG) \
-		--output type=oci,dest=$(IMAGE_TAR) image
+	scripts/build-image.sh build
 
-# Remove the built image, prepared rootfs, and the builder's cache.
+# Remove the built image, prepared rootfs, and every engine's builder/cache.
 clear-image: clear-rootfs
 	rm -f $(IMAGE_TAR)
-	$(DOCKER) buildx prune --all --force --builder $(BUILDX_BUILDER) 2>/dev/null || true
+	scripts/build-image.sh clean
 
 clear-rootfs:
 	rm -f .local/rootfs.ext4 .local/rootfs.json .local/rootfs-*.ext4 .local/rootfs-*.json
