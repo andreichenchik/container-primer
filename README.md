@@ -9,6 +9,18 @@ that answers questions about the mounted workspace.
 
 ![ContainerPrimer web UI: ask a question about the mounted workspace and a pi agent answers](preview.png)
 
+## Install
+
+```bash
+brew install andreichenchik/tap/container-primer
+container-primer run --build-image ./my-app ./my-workspace
+```
+
+Homebrew installs a prebuilt, signed binary (Apple silicon, macOS 26+) from the
+[andreichenchik/homebrew-tap](https://github.com/andreichenchik/homebrew-tap) tap. The `make` /
+`example/` workflow below is for local development from a checkout. See `RELEASING.md` for cutting a
+release.
+
 ## How It Works
 
 The binary is the whole product — no shell scripts. It:
@@ -50,7 +62,7 @@ Open the printed URL and press Ctrl+C to stop the container.
 `make` is shorthand for:
 
 ```bash
-./.build/release/ContainerPrimer run --build-image example/image example/workspace
+./.build/release/container-primer run --build-image example/image example/workspace
 ```
 
 ## Running other images
@@ -59,10 +71,10 @@ Build any context, or run any published image directly:
 
 ```bash
 # Build a context (directory containing a Containerfile, or a Containerfile path)
-./.build/release/ContainerPrimer run --build-image ./my-app ./my-workspace
+./.build/release/container-primer run --build-image ./my-app ./my-workspace
 
 # Pull a registry reference — no build, no container engine
-./.build/release/ContainerPrimer run --image docker.io/library/nginx:latest example/workspace
+./.build/release/container-primer run --image docker.io/library/nginx:latest example/workspace
 make from-image IMAGE=docker.io/library/redis:latest    # convenience target
 ```
 

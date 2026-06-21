@@ -8,7 +8,7 @@ let package = Package(
     ],
     products: [
         .executable(
-            name: "ContainerPrimer",
+            name: "container-primer",
             targets: ["ContainerPrimer"]
         )
     ],

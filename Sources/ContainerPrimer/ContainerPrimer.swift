@@ -6,7 +6,6 @@ import Foundation
 @main
 struct ContainerPrimer: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
-    commandName: "ContainerPrimer",
     abstract: "Build or pull a container image and run it in a lightweight Linux VM.",
     subcommands: [Run.self, Prepare.self, Clean.self],
     defaultSubcommand: Run.self
