@@ -125,7 +125,9 @@ struct ContainerRunner {
     }
 
     let metadata = try RootfsMetadata.load(from: paths.metadata)
-    if FileManager.default.fileExists(atPath: paths.imageTar.path) {
+    // Only archive-sourced rootfs are tied to .local/image.tar; registry-pulled
+    // ones (imageArchive == nil) ignore a stale leftover archive.
+    if metadata.imageArchive != nil, FileManager.default.fileExists(atPath: paths.imageTar.path) {
       let currentArchive = try ImageArchiveFingerprint(url: paths.imageTar)
       guard currentArchive == metadata.imageArchive else {
         throw ValidationError("prepared rootfs is older than .local/image.tar. Run `make prepare`.")

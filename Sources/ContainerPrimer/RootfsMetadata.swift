@@ -29,7 +29,8 @@ struct ImageArchiveFingerprint: Codable, Equatable {
 struct RootfsMetadata: Codable {
   let imageReference: String
   let imageDigest: String
-  let imageArchive: ImageArchiveFingerprint
+  /// Fingerprint of the source OCI archive, or `nil` when pulled from a registry.
+  let imageArchive: ImageArchiveFingerprint?
   let rootfsSizeInBytes: UInt64
   let createdAt: Date
 

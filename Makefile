@@ -7,12 +7,14 @@ BUILDX_BUILDER := primer-builder
 IMAGE_TAG := container-primer:local
 IMAGE_TAR := .local/image.tar
 KERNEL := .local/vmlinux
+# Registry reference for `make from-image`; override on the command line.
+IMAGE ?= docker.io/library/nginx:latest
 SWIFT_SOURCE_INPUTS := $(shell find Sources -type d -o -type f)
 SWIFT_PACKAGE_FILES := Package.swift Package.resolved ContainerPrimer.entitlements
 IMAGE_INPUTS := $(shell find image -type d -o -type f)
 export IMAGE_TAG IMAGE_TAR BUILDX_BUILDER
 
-.PHONY: all build-debug build-release release clear clear-dist debug fmt first-setup prepare clear-image clear-rootfs
+.PHONY: all build-debug build-release release from-image clear clear-dist debug fmt first-setup prepare clear-image clear-rootfs
 
 all: release
 
@@ -25,6 +27,12 @@ build-release: .build/release/ContainerPrimer
 release: build-release $(IMAGE_TAR)
 	./.build/release/ContainerPrimer prepare
 	./.build/release/ContainerPrimer
+
+# Run straight from a registry reference — no image build or container engine.
+# Override the image: make from-image IMAGE=docker.io/library/redis:latest
+from-image: build-release
+	@mkdir -p workspace
+	./.build/release/ContainerPrimer run --image $(IMAGE)
 
 clear: clear-dist clear-image
 	rm -rf .build .local/benchmarks .local/opt .local/kata.tar.xz

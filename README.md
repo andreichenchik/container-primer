@@ -8,7 +8,8 @@ read the mounted `workspace/` directory.
 
 ## How It Works
 
-- Builds the container image from `image/` into `.local/image.tar`.
+- Builds the container image from `image/` into `.local/image.tar`, or pulls a registry reference
+  passed via `--image` (see [Run from a registry reference](#run-from-a-registry-reference)).
 - Prepares `.local/rootfs.ext4`, a cached Linux filesystem for the image, then clones it for each
   run to avoid unpacking the image every startup.
 - Boots with `.local/vmlinux`, mounts `workspace/` read-only at `/workspace`, and runs the image's
@@ -40,6 +41,21 @@ make
 | `OPENAI_MODEL`    | Model name        |
 
 Open the printed URL and press Ctrl+C to stop the container.
+
+## Run from a registry reference
+
+To run any published image directly — no image build, no Podman/Docker — pass a registry locator.
+The launcher pulls it, prepares a rootfs, and boots:
+
+```bash
+make from-image                                      # defaults to docker.io/library/nginx:latest
+make from-image IMAGE=docker.io/library/redis:latest # or any reference
+```
+
+Reach the container at the printed IP (e.g. `curl http://<ip>/`). The pulled rootfs is cached, so a
+second run reuses it without re-pulling. Equivalent to
+`./.build/release/ContainerPrimer run --image <ref>`; `--image` also works with `prepare`. Without
+it, the launcher uses the image built from `image/`.
 
 ## Commands
 
