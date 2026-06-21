@@ -1,4 +1,3 @@
 .build/
-/.local/
 /.env
-/image/node_modules/
+/example/image/node_modules/

@@ -3,26 +3,31 @@ import Containerization
 import ContainerizationOS
 import Foundation
 
-/// Boots a container from the prepared rootfs, mounting the host `workspace/`
-/// read-only and running the image's own entrypoint until the server exits or a
-/// termination signal arrives.
+/// Boots a container from a prepared rootfs snapshot, mounting the host
+/// `workspace/` read-only and running the image's own entrypoint until the
+/// server exits or a termination signal arrives.
 struct ContainerRunner {
-  let paths: ProjectPaths
+  let cacheStore: CacheStore
+  let projectPaths: ProjectPaths
 
-  init(paths: ProjectPaths = ProjectPaths()) {
-    self.paths = paths
+  init(cacheStore: CacheStore, projectPaths: ProjectPaths = ProjectPaths()) {
+    self.cacheStore = cacheStore
+    self.projectPaths = projectPaths
   }
 
-  func run(workspacePath explicitWorkspacePath: String?) async throws {
+  func run(source: ImageSource, workspacePath explicitWorkspacePath: String?) async throws {
     let envKeys = DotEnv.load()
     print("Starting container primer...")
 
-    let metadata = try loadPreparedRootfsMetadata()
+    let snapshot = cacheStore.snapshot(forKey: try source.cacheKey)
+    let metadata = try loadPreparedRootfsMetadata(snapshot)
+
+    let kernel = try await KernelProvider(kernel: cacheStore.kernel).ensureKernel()
 
     let initfsReference = "ghcr.io/apple/containerization/vminit:0.26.5"
     print("Fetching base container filesystem...")
     var manager = try await ContainerManager(
-      kernel: Kernel(path: paths.kernel, platform: .linuxArm),
+      kernel: Kernel(path: kernel, platform: .linuxArm),
       initfsReference: initfsReference,
       network: try VmnetNetwork()
     )
@@ -32,9 +37,7 @@ struct ContainerRunner {
 
     // Host directory shared into the container over virtiofs. Defaults to
     // `<cwd>/workspace`; an optional first argument points elsewhere.
-    let workspacePath =
-      explicitWorkspacePath
-      ?? FileManager.default.currentDirectoryPath + "/workspace"
+    let workspacePath = explicitWorkspacePath ?? projectPaths.defaultWorkspace.path
     guard FileManager.default.fileExists(atPath: workspacePath) else {
       throw ValidationError("workspace directory not found: \(workspacePath)")
     }
@@ -42,14 +45,16 @@ struct ContainerRunner {
     let image = try await manager.imageStore.get(reference: metadata.imageReference)
     guard image.digest == metadata.imageDigest else {
       throw ValidationError(
-        "prepared image \(metadata.imageReference) no longer matches the image store. Run `make prepare`."
+        "prepared image \(metadata.imageReference) no longer matches the image store. Run `prepare` again."
       )
     }
 
-    let containerDir = paths.containerDirectory(imageStore: manager.imageStore, id: containerId)
+    let containerDir = manager.imageStore.path
+      .appendingPathComponent("containers", isDirectory: true)
+      .appendingPathComponent(containerId, isDirectory: true)
     try FileManager.default.createDirectory(at: containerDir, withIntermediateDirectories: true)
     let containerRootfs = containerDir.appendingPathComponent("rootfs.ext4")
-    try RootfsFileSystem.cloneRootfs(from: paths.cachedRootfs, to: containerRootfs)
+    try RootfsFileSystem.cloneRootfs(from: snapshot.rootfs, to: containerRootfs)
 
     print("Creating container from prepared rootfs for \(image.reference)...")
 
@@ -114,25 +119,16 @@ struct ContainerRunner {
     print("Container stopped, cleaning up.")
   }
 
-  private func loadPreparedRootfsMetadata() throws -> RootfsMetadata {
-    guard FileManager.default.fileExists(atPath: paths.cachedRootfs.path) else {
+  private func loadPreparedRootfsMetadata(_ snapshot: CacheStore.Snapshot) throws -> RootfsMetadata
+  {
+    guard FileManager.default.fileExists(atPath: snapshot.rootfs.path) else {
       throw ValidationError(
-        "prepared rootfs not found: \(paths.cachedRootfs.path). Run `make prepare`.")
+        "prepared rootfs not found: \(snapshot.rootfs.path). Run `prepare` first.")
     }
-    guard FileManager.default.fileExists(atPath: paths.metadata.path) else {
+    guard FileManager.default.fileExists(atPath: snapshot.metadata.path) else {
       throw ValidationError(
-        "prepared rootfs metadata not found: \(paths.metadata.path). Run `make prepare`.")
+        "prepared rootfs metadata not found: \(snapshot.metadata.path). Run `prepare` first.")
     }
-
-    let metadata = try RootfsMetadata.load(from: paths.metadata)
-    // Only archive-sourced rootfs are tied to .local/image.tar; registry-pulled
-    // ones (imageArchive == nil) ignore a stale leftover archive.
-    if metadata.imageArchive != nil, FileManager.default.fileExists(atPath: paths.imageTar.path) {
-      let currentArchive = try ImageArchiveFingerprint(url: paths.imageTar)
-      guard currentArchive == metadata.imageArchive else {
-        throw ValidationError("prepared rootfs is older than .local/image.tar. Run `make prepare`.")
-      }
-    }
-    return metadata
+    return try RootfsMetadata.load(from: snapshot.metadata)
   }
 }

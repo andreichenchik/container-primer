@@ -1,79 +1,51 @@
 SWIFT := $(shell which swift)
 
-KATA_VERSION := 3.17.0
-KATA_URL := https://github.com/kata-containers/kata-containers/releases/download/$(KATA_VERSION)/kata-static-$(KATA_VERSION)-arm64.tar.xz
+BIN_RELEASE := .build/release/ContainerPrimer
+BIN_DEBUG := .build/debug/ContainerPrimer
+ENTITLEMENTS := ContainerPrimer.entitlements
 
-BUILDX_BUILDER := primer-builder
-IMAGE_TAG := container-primer:local
-IMAGE_TAR := .local/image.tar
-KERNEL := .local/vmlinux
+EXAMPLE_IMAGE := example/image
+EXAMPLE_WORKSPACE := example/workspace
 # Registry reference for `make from-image`; override on the command line.
 IMAGE ?= docker.io/library/nginx:latest
-SWIFT_SOURCE_INPUTS := $(shell find Sources -type d -o -type f)
-SWIFT_PACKAGE_FILES := Package.swift Package.resolved ContainerPrimer.entitlements
-IMAGE_INPUTS := $(shell find image -type d -o -type f)
-export IMAGE_TAG IMAGE_TAR BUILDX_BUILDER
 
-.PHONY: all build-debug build-release release from-image clear clear-dist debug fmt first-setup prepare clear-image clear-rootfs
+.PHONY: all run from-image prepare debug build-release build-debug clean clean-cache fmt
 
-all: release
+all: run
 
-build-release: .build/release/ContainerPrimer
-
-.build/release/ContainerPrimer: $(SWIFT_SOURCE_INPUTS) $(SWIFT_PACKAGE_FILES) $(KERNEL)
+# Build (with the virtualization entitlement) the binary must be signed at build
+# time; it can't self-sign at runtime.
+build-release:
 	$(SWIFT) build --configuration release
-	codesign --force --sign - --entitlements ContainerPrimer.entitlements ./.build/release/ContainerPrimer
+	codesign --force --sign - --entitlements $(ENTITLEMENTS) $(BIN_RELEASE)
 
-release: build-release $(IMAGE_TAR)
-	./.build/release/ContainerPrimer prepare
-	./.build/release/ContainerPrimer
-
-# Run straight from a registry reference — no image build or container engine.
-# Override the image: make from-image IMAGE=docker.io/library/redis:latest
-from-image: build-release
-	@mkdir -p workspace
-	./.build/release/ContainerPrimer run --image $(IMAGE)
-
-clear: clear-dist clear-image
-	rm -rf .build .local/benchmarks .local/opt .local/kata.tar.xz
-
-clear-dist:
-	$(SWIFT) package clean
-	rm -rf ./build/debug
-	rm -rf ./build/release
-
-build-debug: .build/debug/ContainerPrimer
-
-.build/debug/ContainerPrimer: $(SWIFT_SOURCE_INPUTS) $(SWIFT_PACKAGE_FILES) $(KERNEL)
+build-debug:
 	$(SWIFT) build
-	codesign --force --sign - --entitlements ContainerPrimer.entitlements ./.build/debug/ContainerPrimer
+	codesign --force --sign - --entitlements $(ENTITLEMENTS) $(BIN_DEBUG)
 
-debug: build-debug prepare
-	./.build/debug/ContainerPrimer
+# Build the example image with podman/docker and run it.
+run: build-release
+	$(BIN_RELEASE) run --build-image $(EXAMPLE_IMAGE) $(EXAMPLE_WORKSPACE)
 
-prepare: build-release $(IMAGE_TAR)
-	./.build/release/ContainerPrimer prepare
+# Run a registry reference instead of building — no container engine needed.
+from-image: build-release
+	$(BIN_RELEASE) run --image $(IMAGE) $(EXAMPLE_WORKSPACE)
 
-# Build the container image as an OCI archive. The script auto-selects a working
-# container engine (prefers Podman, falls back to Docker).
-.local/image.tar: $(IMAGE_INPUTS)
-	scripts/build-image.sh build
+# Refresh the example's rootfs snapshot without running it.
+prepare: build-release
+	$(BIN_RELEASE) prepare --build-image $(EXAMPLE_IMAGE)
 
-# Remove the built image, prepared rootfs, and every engine's builder/cache.
-clear-image: clear-rootfs
-	rm -f $(IMAGE_TAR)
-	scripts/build-image.sh clean
+debug: build-debug
+	$(BIN_DEBUG) run --build-image $(EXAMPLE_IMAGE) $(EXAMPLE_WORKSPACE)
 
-clear-rootfs:
-	rm -f .local/rootfs.ext4 .local/rootfs.json .local/rootfs-*.ext4 .local/rootfs-*.json
+# Remove the cached kernel and rootfs snapshots from Application Support.
+clean-cache: build-release
+	$(BIN_RELEASE) clean
+
+# Remove local build artifacts.
+clean:
+	$(SWIFT) package clean
+	rm -rf .build
 
 fmt:
-	$(SWIFT) format --in-place --recursive Sources/
-
-first-setup: $(KERNEL)
-
-$(KERNEL):
-	@mkdir -p .local
-	curl -SsL -o .local/kata.tar.xz $(KATA_URL)
-	tar -xf .local/kata.tar.xz -C .local
-	cp -L .local/opt/kata/share/kata-containers/vmlinux.container $(KERNEL)
+	$(SWIFT) format --in-place --recursive Sources/ Tests/

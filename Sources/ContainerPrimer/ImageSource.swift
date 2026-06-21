@@ -3,53 +3,56 @@ import Containerization
 import ContainerizationArchive
 import Foundation
 
-/// Supplies the container image to unpack into the cached rootfs. Implementations
-/// either load a local OCI archive or pull a reference from a registry.
+/// Supplies the container image to unpack into a cached rootfs. Implementations
+/// either build a local context with a container engine or pull a registry
+/// reference.
 protocol ImageSource {
-  /// Load or pull the image into `store` and return it.
+  /// Build or pull the image into `store` and return it.
   func resolve(in store: ImageStore) async throws -> Image
 
-  /// True when a rootfs cached from `metadata` is still valid for this source.
-  func isCacheValid(_ metadata: RootfsMetadata) throws -> Bool
-
-  /// Archive fingerprint to record in metadata, or `nil` for registry sources.
-  func archiveFingerprint() throws -> ImageArchiveFingerprint?
+  /// Stable key identifying this source; selects the snapshot cache slot.
+  var cacheKey: String { get throws }
 }
 
-/// Loads an image from a local OCI archive (`.local/image.tar`).
-struct ArchiveImageSource: ImageSource {
-  let imageTar: URL
+extension ImageSource {
+  /// A cached rootfs is reusable when it was built for the same source key.
+  func isCacheValid(_ metadata: RootfsMetadata) throws -> Bool {
+    metadata.cacheKey == (try cacheKey)
+  }
+}
+
+/// Builds an image from a local context with podman or docker. The build output
+/// is loaded into `store` and the intermediate archive is discarded.
+struct BuildImageSource: ImageSource {
+  let contextDir: URL
+  let containerfile: URL
+
+  var cacheKey: String {
+    get throws { try CacheKey.forContext(dir: contextDir, containerfile: containerfile) }
+  }
 
   func resolve(in store: ImageStore) async throws -> Image {
-    guard FileManager.default.fileExists(atPath: imageTar.path) else {
-      throw ValidationError("image archive not found: \(imageTar.path). Run `make .local/image.tar`.")
-    }
-    print("Loading image from \(imageTar.path)...")
+    let tag = "containerprimer.local/build-\(try cacheKey.prefix(12)):latest"
+    let engine = try ContainerEngine.select()
+    let archive = try engine.build(contextDir: contextDir, containerfile: containerfile, tag: tag)
+    defer { try? FileManager.default.removeItem(at: archive) }
 
     let extractDir = FileManager.default.temporaryDirectory
       .appendingPathComponent("primer-image-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: extractDir) }
 
-    let reader = try ArchiveReader(file: imageTar)
+    print("Loading built image into the store...")
+    let reader = try ArchiveReader(file: archive)
     let rejectedPaths = try reader.extractContents(to: extractDir)
     let images = try await store.load(from: extractDir)
     for rejectedPath in rejectedPaths {
       print("warning: skipped image archive member \(rejectedPath)")
     }
     guard let image = images.first else {
-      throw ValidationError("no image found in \(imageTar.path)")
+      throw ValidationError("no image found in build output")
     }
     return image
-  }
-
-  func isCacheValid(_ metadata: RootfsMetadata) throws -> Bool {
-    guard FileManager.default.fileExists(atPath: imageTar.path) else { return false }
-    return metadata.imageArchive == (try ImageArchiveFingerprint(url: imageTar))
-  }
-
-  func archiveFingerprint() throws -> ImageArchiveFingerprint? {
-    try ImageArchiveFingerprint(url: imageTar)
   }
 }
 
@@ -58,14 +61,10 @@ struct ArchiveImageSource: ImageSource {
 struct RegistryImageSource: ImageSource {
   let reference: String
 
+  var cacheKey: String { CacheKey.hashing("registry:" + reference) }
+
   func resolve(in store: ImageStore) async throws -> Image {
     print("Pulling image \(reference)...")
     return try await store.get(reference: reference, pull: true)
   }
-
-  func isCacheValid(_ metadata: RootfsMetadata) -> Bool {
-    metadata.imageReference == reference
-  }
-
-  func archiveFingerprint() -> ImageArchiveFingerprint? { nil }
 }

@@ -4,49 +4,71 @@ import Testing
 @testable import ContainerPrimer
 
 @Suite struct ImageSourceTests {
-  private func metadata(reference: String, archive: ImageArchiveFingerprint?) -> RootfsMetadata {
+  private func metadata(cacheKey: String) -> RootfsMetadata {
     RootfsMetadata(
-      imageReference: reference,
+      cacheKey: cacheKey,
+      imageReference: "registry/image:tag",
       imageDigest: "sha256:abc",
-      imageArchive: archive,
       rootfsSizeInBytes: 4096,
       createdAt: Date(timeIntervalSince1970: 1_700_000_000)
     )
   }
 
-  @Test func registryCacheValidWhenReferenceMatches() throws {
+  @Test func registryCacheValidWhenKeyMatches() throws {
     let source = RegistryImageSource(reference: "docker.io/library/nginx:latest")
-    let meta = metadata(reference: "docker.io/library/nginx:latest", archive: nil)
-    #expect(try source.isCacheValid(meta))
+    #expect(try source.isCacheValid(metadata(cacheKey: source.cacheKey)))
   }
 
-  @Test func registryCacheInvalidWhenReferenceDiffers() throws {
+  @Test func registryCacheInvalidForDifferentReference() throws {
     let source = RegistryImageSource(reference: "docker.io/library/nginx:latest")
-    let meta = metadata(reference: "docker.io/library/redis:latest", archive: nil)
-    #expect(try !source.isCacheValid(meta))
+    let other = RegistryImageSource(reference: "docker.io/library/redis:latest")
+    #expect(try !source.isCacheValid(metadata(cacheKey: other.cacheKey)))
   }
 
-  @Test func registryHasNoArchiveFingerprint() throws {
-    #expect(try RegistryImageSource(reference: "x").archiveFingerprint() == nil)
+  @Test func buildCacheValidWhenContextUnchanged() throws {
+    let context = try TempContext()
+    defer { context.cleanup() }
+    let source = context.source()
+    #expect(try source.isCacheValid(metadata(cacheKey: source.cacheKey)))
   }
 
-  @Test func archiveCacheValidWhenFingerprintMatches() throws {
-    let url = FileManager.default.temporaryDirectory
-      .appendingPathComponent("img-\(UUID().uuidString).tar")
-    try "image".write(to: url, atomically: true, encoding: .utf8)
-    defer { try? FileManager.default.removeItem(at: url) }
+  @Test func buildCacheInvalidAfterEditingContext() throws {
+    let context = try TempContext()
+    defer { context.cleanup() }
+    let before = try context.source().cacheKey
 
-    let source = ArchiveImageSource(imageTar: url)
-    let fingerprint = try #require(try source.archiveFingerprint())
-    let meta = metadata(reference: "local", archive: fingerprint)
-    #expect(try source.isCacheValid(meta))
+    context.write("server.ts", "console.log('changed')")
+    #expect(try context.source().cacheKey != before)
   }
 
-  @Test func archiveCacheInvalidWhenArchiveMissing() throws {
-    let url = FileManager.default.temporaryDirectory
-      .appendingPathComponent("missing-\(UUID().uuidString).tar")
-    let source = ArchiveImageSource(imageTar: url)
-    let meta = metadata(reference: "local", archive: nil)
-    #expect(try !source.isCacheValid(meta))
+  @Test func buildAndRegistryKeysDiffer() throws {
+    let context = try TempContext()
+    defer { context.cleanup() }
+    let registry = RegistryImageSource(reference: "x").cacheKey
+    #expect(try context.source().cacheKey != registry)
   }
+}
+
+/// A throwaway build context directory for cache-key tests.
+private struct TempContext {
+  let dir: URL
+
+  init() throws {
+    dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ctx-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    write("Containerfile", "FROM scratch")
+    write("server.ts", "console.log('hi')")
+  }
+
+  func write(_ name: String, _ contents: String) {
+    try? contents.write(
+      to: dir.appendingPathComponent(name), atomically: true, encoding: .utf8)
+  }
+
+  func source() -> BuildImageSource {
+    BuildImageSource(contextDir: dir, containerfile: dir.appendingPathComponent("Containerfile"))
+  }
+
+  func cleanup() { try? FileManager.default.removeItem(at: dir) }
 }
