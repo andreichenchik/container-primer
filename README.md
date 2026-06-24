@@ -79,6 +79,10 @@ make from-image IMAGE=docker.io/library/redis:latest    # convenience target
 Reach the container at the printed IP (e.g. `curl http://<ip>/`). `--image` / `--build-image` also
 work with the `prepare` subcommand (builds the snapshot without running).
 
+As the container's services start listening, their ports are surfaced on the host terminal as
+`[port-listener] listening on http://<ip>:<port>` lines (ports bound only to loopback are flagged
+as unreachable). Detection reads `/proc/net/tcp` inside the guest, so the image needs `sh`/`cat`.
+
 ## Commands
 
 - `make`: build the binary and run the example.

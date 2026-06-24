@@ -96,8 +96,9 @@ struct ContainerRunner {
     try await container.create()
     try await container.start()
 
-    if let interface = container.interfaces.first {
-      print("Container available at \(interface.ipv4Address.address.description)")
+    let containerAddress = container.interfaces.first?.ipv4Address.address.description
+    if let containerAddress {
+      print("Container available at \(containerAddress)")
     }
     print("Press Ctrl+C to stop.")
 
@@ -111,6 +112,14 @@ struct ContainerRunner {
           try? await container.stop()
           return
         }
+      }
+      // Surface the ports the container starts listening on as they appear.
+      if let containerAddress {
+        let watcher = PortWatcher(
+          runner: ContainerCommandRunner(container: container),
+          ipv4Address: containerAddress
+        )
+        group.addTask { await watcher.watch() }
       }
       try await container.wait()
       group.cancelAll()
