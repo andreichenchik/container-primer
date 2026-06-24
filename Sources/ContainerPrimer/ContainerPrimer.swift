@@ -77,7 +77,7 @@ struct SourceOptions: ParsableArguments {
 
   @Option(
     name: .long,
-    help: "Build context directory or Containerfile to build with podman/docker.")
+    help: "Build context directory or Containerfile to build with Apple's `container`.")
   var buildImage: String?
 
   func makeSource() throws -> ImageSource {

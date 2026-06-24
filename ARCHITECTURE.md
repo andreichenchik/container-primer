@@ -7,14 +7,14 @@ mounts the host `workspace/` read-only and runs the image's own `ENTRYPOINT`. Th
 knows about the workload — it only prepares a rootfs and runs whatever the image defines.
 
 Everything that used to be shell glue (image building, kernel download) now lives in the binary, so
-the binary is the entire product. Image building still uses a host container engine (podman/docker),
-just driven from Swift instead of bash.
+the binary is the entire product. Image building shells out to Apple's `container` CLI, driven from
+Swift instead of bash.
 
 ```
 ┌─ host (macOS) ─────────────────────────────────────────────┐
 │  ContainerPrimer binary                                     │
 │    image source ──► OCI image (in framework store)          │
-│      --build-image: podman/docker build → temp OCI tar      │
+│      --build-image: container build → temp OCI tar          │
 │      --image:       registry pull                           │
 │    prepare → unpack image → cached snapshot (rootfs.ext4)   │
 │    run     → clone snapshot → boot VM via Containerization  │
@@ -33,7 +33,7 @@ just driven from Swift instead of bash.
 ### Image source (`--build-image` or `--image`)
 A run/prepare requires exactly one source:
 - `--build-image <context>` — a directory (with a `Containerfile`/`Dockerfile`) or a Containerfile
-  path. Built with podman or docker into a **temporary** OCI archive, which is loaded into the
+  path. Built with Apple's `container` CLI into a **temporary** OCI archive, which is loaded into the
   framework's image store and then deleted. Only the snapshot and the loaded OCI image persist.
 - `--image <ref>` — pulled from a registry into the image store. No container engine required.
 
@@ -88,10 +88,10 @@ A default `isCacheValid(_:)` compares `metadata.cacheKey` to the source's `cache
 - **`RegistryImageSource`** — `store.get(reference:pull:true)`; `cacheKey` is a hash of the reference.
 
 ### Image building — `ContainerEngine.swift`
-Ports the former `scripts/build-image.sh`. `select()` picks the first ready engine (podman info /
-docker info), preferring podman. `build(contextDir:containerfile:tag:)` builds into a temporary
-oci-archive tar (podman `build` + `save`; docker via a `docker-container` buildx builder and the OCI
-exporter) and returns its URL for the caller to load and delete.
+Drives Apple's `container` CLI. `ensureAvailable()` probes `container system status` and, if the
+service isn't running, throws guidance to start it (it never starts the service itself).
+`build(contextDir:containerfile:tag:)` runs `container build --output type=tar,dest=…` to write a
+temporary OCI-archive tar and returns its URL for the caller to load and delete.
 
 ### Kernel — `KernelProvider.swift`
 `ensureKernel()` returns the cached `vmlinux`, downloading the pinned Kata Containers static tarball

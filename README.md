@@ -1,8 +1,8 @@
 # ContainerPrimer
 
-An exploration of Apple's [Containerization](https://github.com/apple/containerization) framework:
-a self-contained Swift binary that builds (or pulls) a container image and boots it in a lightweight
-Linux VM, mounting a host `workspace/` read-only at `/workspace`.
+A self-contained Swift binary that builds (or pulls) a container image and boots it in a lightweight
+Linux VM, mounting a host `workspace/` read-only at `/workspace`. Built on Apple's
+[Containerization](https://github.com/apple/containerization) framework.
 
 The repo ships an example app under `example/`: a [pi](https://pi.dev) coding agent (Bun + Hono)
 that answers questions about the mounted workspace.
@@ -18,31 +18,29 @@ container-primer run --build-image ./my-app ./my-workspace
 
 Homebrew installs a prebuilt, signed binary (Apple silicon, macOS 26+) from the
 [andreichenchik/homebrew-tap](https://github.com/andreichenchik/homebrew-tap) tap. The `make` /
-`example/` workflow below is for local development from a checkout. See `RELEASING.md` for cutting a
-release.
+`example/` workflow below is for local development from a checkout (Xcode 26+ / Swift 6.2+). See
+`RELEASING.md` for cutting a release.
 
 ## How It Works
 
-The binary is the whole product — no shell scripts. It:
+The binary is the whole product. It:
 
-- **Builds** a local image from a `--build-image <context>` (driving podman or docker, whichever is
-  running), or **pulls** a `--image <ref>` from a registry (no container engine needed).
-- Unpacks the image once into a cached ext4 **snapshot**, then clones that snapshot for each run
-  (cheap APFS copy) so startup never re-unpacks.
+- **Builds** a local image from a `--build-image <context>` (driving Apple's `container` CLI), or
+  **pulls** a `--image <ref>` from a registry (no container engine needed).
+- Unpacks the image once into a cached **snapshot**, then clones that snapshot for each run
+  so startup never re-unpacks.
 - Auto-downloads and caches the Linux **kernel** on first run.
 - Boots the VM, mounts `workspace/` read-only at `/workspace`, forwards every variable declared in
-  `.env` (shell environment wins), and runs the image's own `ENTRYPOINT`.
+  `.env`, and runs the image's own `ENTRYPOINT`.
 
-The launcher is image-agnostic: it runs whatever the image defines. Editing the mounted workspace
-affects the next request without a rebuild; editing a build context triggers a rebuild on the next
-run (the snapshot is keyed on the context's contents).
+Editing the mounted workspace affects the next request without a rebuild; editing a build context
+triggers a rebuild on the next run.
 
 ## Requirements
 
 - Apple silicon Mac
 - macOS 26+
-- Xcode 26+ / Swift 6.2+
-- Podman, or Docker CLI with `buildx` (only for `--build-image`; auto-selected, prefers Podman)
+- Apple's `container` CLI (`brew install container`) — only for `--build-image`
 
 ## Quick Start
 
@@ -78,9 +76,8 @@ Build any context, or run any published image directly:
 make from-image IMAGE=docker.io/library/redis:latest    # convenience target
 ```
 
-Reach the container at the printed IP (e.g. `curl http://<ip>/`). Snapshots are cached per source,
-so a second run reuses them. `--image` / `--build-image` also work with the `prepare` subcommand
-(builds the snapshot without running).
+Reach the container at the printed IP (e.g. `curl http://<ip>/`). `--image` / `--build-image` also
+work with the `prepare` subcommand (builds the snapshot without running).
 
 ## Commands
 
@@ -100,12 +97,8 @@ Generated artifacts live under `~/Library/Application Support/ContainerPrimer/`:
 | `kernel/vmlinux`   | Linux kernel (auto-downloaded once)      |
 | `snapshots/<key>/` | Cached rootfs + metadata, one per source |
 
-OCI images themselves are cached in the framework's store
-(`~/Library/Application Support/com.apple.containerization`). The intermediate build archive is
-temporary and never persisted.
-
 ## Troubleshooting
 
 If startup misbehaves — e.g. a `vmnet` network error or a stale snapshot — it's usually leftover
 state from an interrupted run. Reset with `make clean-cache` and run again. For `--build-image`,
-make sure Podman (`podman machine start`) or Docker (Colima / Docker Desktop) is running.
+make sure the container service is running (`container system start`).

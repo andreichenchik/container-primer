@@ -21,8 +21,8 @@ extension ImageSource {
   }
 }
 
-/// Builds an image from a local context with podman or docker. The build output
-/// is loaded into `store` and the intermediate archive is discarded.
+/// Builds an image from a local context with Apple's `container` CLI. The build
+/// output is loaded into `store` and the intermediate archive is discarded.
 struct BuildImageSource: ImageSource {
   let contextDir: URL
   let containerfile: URL
@@ -33,8 +33,9 @@ struct BuildImageSource: ImageSource {
 
   func resolve(in store: ImageStore) async throws -> Image {
     let tag = "containerprimer.local/build-\(try cacheKey.prefix(12)):latest"
-    let engine = try ContainerEngine.select()
-    let archive = try engine.build(contextDir: contextDir, containerfile: containerfile, tag: tag)
+    try ContainerEngine.ensureAvailable()
+    let archive = try ContainerEngine.build(
+      contextDir: contextDir, containerfile: containerfile, tag: tag)
     defer { try? FileManager.default.removeItem(at: archive) }
 
     let extractDir = FileManager.default.temporaryDirectory
