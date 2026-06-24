@@ -4,8 +4,9 @@ import ContainerizationOS
 import Foundation
 
 /// Boots a container from a prepared rootfs snapshot, mounting the host
-/// `workspace/` read-only and running the image's own entrypoint until the
-/// server exits or a termination signal arrives.
+/// `workspace/` and running the image's own entrypoint (or an explicit command)
+/// until the process exits or a termination signal arrives. With `interactive`
+/// the host terminal is attached to the process over a pty.
 struct ContainerRunner {
   let cacheStore: CacheStore
   let projectPaths: ProjectPaths
@@ -15,7 +16,43 @@ struct ContainerRunner {
     self.projectPaths = projectPaths
   }
 
-  func run(source: ImageSource, workspacePath explicitWorkspacePath: String?) async throws {
+  /// Resolves the process arguments. An explicit `command` always wins; an empty
+  /// command runs the image entrypoint, except in interactive mode where it
+  /// defaults to a shell.
+  static func resolvedCommand(interactive: Bool, command: [String]) -> [String] {
+    if !command.isEmpty { return command }
+    return interactive ? ["/bin/sh"] : []
+  }
+
+  /// Runs `source`'s container.
+  /// - Parameters:
+  ///   - command: Process arguments to run instead of the image entrypoint.
+  ///   - interactive: Attach the host terminal over a pty (raw mode).
+  ///   - writeWorkspace: Mount `/workspace` read-write instead of read-only.
+  func run(
+    source: ImageSource,
+    workspacePath explicitWorkspacePath: String?,
+    command: [String] = [],
+    interactive: Bool = false,
+    writeWorkspace: Bool = false
+  ) async throws {
+    let resolvedCommand = Self.resolvedCommand(interactive: interactive, command: command)
+    let mountOptions = writeWorkspace ? [] : ["ro"]
+
+    // In interactive mode forward the host terminal to the process. Created up
+    // front (cheap) so the config closure can wire it; raw mode is enabled just
+    // before start so the status prints below stay in cooked mode.
+    let terminal: Terminal?
+    if interactive {
+      guard isatty(STDIN_FILENO) != 0 else {
+        throw ValidationError("--interactive requires a terminal on stdin")
+      }
+      terminal = try Terminal(descriptor: STDIN_FILENO)
+    } else {
+      terminal = nil
+    }
+    defer { terminal?.tryReset() }
+
     let envKeys = DotEnv.load()
     print("Starting container primer...")
 
@@ -71,15 +108,39 @@ struct ContainerRunner {
     ) { @Sendable config in
       config.cpus = 2
       config.memoryInBytes = 512.mib()
-      // Mount the host `workspace/` read-only; the agent reads it live, so
-      // host edits there are visible without a rebuild.
+      // Resolve `localhost` (and IPv6 loopback names) via /etc/hosts instead of DNS.
+      config.hosts = .default
+      // Mount the host `workspace/`; the agent reads it live, so host edits there
+      // are visible without a rebuild. Read-only unless `--write` is given.
       config.mounts.append(
-        .share(source: workspacePath, destination: "/workspace", options: ["ro"]))
-      // The command, working directory, and base environment come from the image
-      // (ENTRYPOINT / WORKDIR / ENV).
-      // Surface the container's logs on the host terminal.
-      config.process.stdout = HostWriter(.standardOutput)
-      config.process.stderr = HostWriter(.standardError)
+        .share(source: workspacePath, destination: "/workspace", options: mountOptions))
+      // Working directory and base environment come from the image (WORKDIR / ENV);
+      // an explicit command overrides the image entrypoint.
+      if !resolvedCommand.isEmpty {
+        config.process.arguments = resolvedCommand
+      }
+      if let terminal {
+        // Start interactive sessions in the mounted workspace.
+        config.process.workingDirectory = "/workspace"
+        // Wire the host terminal to the process over a pty. Mirror the host's
+        // TERM/COLORTERM instead of `setTerminalIO`'s hardcoded `TERM=xterm`,
+        // which advertises only 8 colors and breaks 256-color/truecolor output.
+        config.process.terminal = true
+        config.process.stdin = terminal
+        config.process.stdout = terminal
+        let hostEnv = ProcessInfo.processInfo.environment
+        config.process.environmentVariables.removeAll {
+          $0.hasPrefix("TERM=") || $0.hasPrefix("COLORTERM=")
+        }
+        config.process.environmentVariables.append("TERM=\(hostEnv["TERM"] ?? "xterm-256color")")
+        if let colorterm = hostEnv["COLORTERM"] {
+          config.process.environmentVariables.append("COLORTERM=\(colorterm)")
+        }
+      } else {
+        // Surface the container's logs on the host terminal.
+        config.process.stdout = HostWriter(.standardOutput)
+        config.process.stderr = HostWriter(.standardError)
+      }
       // Forward every variable declared in `.env` (shell overrides still win).
       for key in envKeys {
         if let value = ProcessInfo.processInfo.environment[key] {
@@ -94,6 +155,28 @@ struct ContainerRunner {
 
     print("Starting container...")
     try await container.create()
+
+    if let terminal {
+      // Interactive: hand the host terminal over to the guest process. Raw mode
+      // forwards control chars (incl. Ctrl+C) as bytes to the shell rather than
+      // signalling this process, so there is no SIGINT trap here.
+      try terminal.setraw()
+      try await container.start()
+      try? await container.resize(to: terminal.size)
+
+      let winch = AsyncSignalHandler.create(notify: [SIGWINCH])
+      try await withThrowingTaskGroup(of: Void.self) { group in
+        group.addTask {
+          for await _ in winch.signals {
+            try? await container.resize(to: terminal.size)
+          }
+        }
+        try await container.wait()
+        group.cancelAll()
+      }
+      return
+    }
+
     try await container.start()
 
     let containerAddress = container.interfaces.first?.ipv4Address.address.description

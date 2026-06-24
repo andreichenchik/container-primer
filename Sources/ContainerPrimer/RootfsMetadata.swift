@@ -8,6 +8,8 @@ struct RootfsMetadata: Codable, Equatable {
   let imageReference: String
   let imageDigest: String
   let rootfsSizeInBytes: UInt64
+  /// Usable rootfs capacity the snapshot was built with; a change rebuilds it.
+  let diskSizeInBytes: UInt64
   let createdAt: Date
 
   static func load(from url: URL) throws -> Self {

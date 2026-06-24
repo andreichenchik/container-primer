@@ -83,6 +83,37 @@ As the container's services start listening, their ports are surfaced on the hos
 `[port-listener] listening on http://<ip>:<port>` lines (ports bound only to loopback are flagged
 as unreachable). Detection reads `/proc/net/tcp` inside the guest, so the image needs `sh`/`cat`.
 
+## Interactive shell and custom commands
+
+Pass a command after `--` to run it instead of the image's `ENTRYPOINT`, and add `-i` to attach
+your terminal interactively (raw mode, live resize, Ctrl+C forwarded to the guest):
+
+```bash
+# Drop into a shell (defaults to /bin/sh when -i is given without a command)
+./.build/release/container-primer run --build-image example/image -i
+
+# Run an explicit command interactively
+./.build/release/container-primer run --build-image example/image -i -- /bin/bash
+
+# Run a one-off command non-interactively (output streamed to the host)
+./.build/release/container-primer run --image docker.io/library/alpine:latest -- ls -la /
+```
+
+Interactive sessions start in `/workspace`. It is mounted read-only; add `-w`/`--write` to make
+host edits from inside the container.
+
+## Rootfs size
+
+The rootfs has 8 GiB of usable capacity by default. Override it with `--disk-size <GiB>` on `run` or
+`prepare` (e.g. when `npm install` runs out of space):
+
+```bash
+./.build/release/container-primer run --image docker.io/library/node:22-slim example/workspace -i --disk-size 16 -- bash
+```
+
+Changing the size rebuilds the snapshot on the next run. The backing file is sparse, so unused
+space costs nothing on the host.
+
 ## Commands
 
 - `make`: build the binary and run the example.

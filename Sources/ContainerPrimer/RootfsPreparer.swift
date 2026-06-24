@@ -13,9 +13,17 @@ struct RootfsPreparer {
     self.imageStore = imageStore
   }
 
+  /// Usable rootfs capacity when none is requested.
+  static let defaultDiskSizeInBytes = 8.gib()
+
   /// Ensure a current snapshot exists for `source` and return its location.
+  /// - Parameter diskSizeInBytes: Usable rootfs capacity; a change rebuilds the snapshot.
   @discardableResult
-  func prepare(source: ImageSource, force: Bool) async throws -> CacheStore.Snapshot {
+  func prepare(
+    source: ImageSource,
+    force: Bool,
+    diskSizeInBytes: UInt64 = defaultDiskSizeInBytes
+  ) async throws -> CacheStore.Snapshot {
     let key = try source.cacheKey
     let snapshot = cacheStore.snapshot(forKey: key)
     try FileManager.default.createDirectory(
@@ -25,6 +33,7 @@ struct RootfsPreparer {
     if !force,
       let metadata = try? RootfsMetadata.load(from: snapshot.metadata),
       FileManager.default.fileExists(atPath: snapshot.rootfs.path),
+      metadata.diskSizeInBytes == diskSizeInBytes,
       (try? source.isCacheValid(metadata)) == true
     {
       print("Prepared rootfs is up to date at \(snapshot.rootfs.path)")
@@ -40,7 +49,7 @@ struct RootfsPreparer {
     }
 
     print("Unpacking \(image.reference) into cached rootfs...")
-    let unpacker = EXT4Unpacker(blockSizeInBytes: 1.gib())
+    let unpacker = EXT4Unpacker(blockSizeInBytes: diskSizeInBytes)
     _ = try await unpacker.unpack(image, for: .current, at: tempRootfs)
 
     let rootfsSize = try tempRootfs.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
@@ -49,6 +58,7 @@ struct RootfsPreparer {
       imageReference: image.reference,
       imageDigest: image.digest,
       rootfsSizeInBytes: UInt64(rootfsSize),
+      diskSizeInBytes: diskSizeInBytes,
       createdAt: Date()
     )
     try metadata.write(to: tempMetadata)

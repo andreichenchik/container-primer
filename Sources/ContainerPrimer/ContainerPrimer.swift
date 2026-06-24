@@ -1,4 +1,5 @@
 import ArgumentParser
+import ContainerizationOS
 import Foundation
 
 /// Command-line entry point. `run` boots a container from a prepared rootfs
@@ -17,17 +18,41 @@ struct ContainerPrimer: AsyncParsableCommand {
       abstract: "Prepare (if needed) and run a container from its rootfs snapshot."
     )
 
-    @Argument(help: "Host workspace directory to mount read-only at /workspace.")
+    @Argument(help: "Host workspace directory to mount at /workspace.")
     var workspacePath: String?
 
+    @Flag(
+      name: [.customShort("i"), .long],
+      help: "Attach an interactive terminal. Defaults the command to /bin/sh.")
+    var interactive = false
+
+    @Flag(
+      name: [.customShort("w"), .long],
+      help: "Mount /workspace read-write instead of read-only.")
+    var write = false
+
+    @Argument(
+      parsing: .postTerminator,
+      help: "Command (after `--`) to run instead of the image entrypoint.")
+    var command: [String] = []
+
     @OptionGroup var source: SourceOptions
+    @OptionGroup var prepareOptions: PrepareOptions
 
     func run() async throws {
       let cacheStore = try CacheStore.default()
       let imageSource = try source.makeSource()
-      try await RootfsPreparer(cacheStore: cacheStore).prepare(source: imageSource, force: false)
+      try await RootfsPreparer(cacheStore: cacheStore)
+        .prepare(
+          source: imageSource, force: false,
+          diskSizeInBytes: try prepareOptions.diskSizeInBytes)
       try await ContainerRunner(cacheStore: cacheStore)
-        .run(source: imageSource, workspacePath: workspacePath)
+        .run(
+          source: imageSource,
+          workspacePath: workspacePath,
+          command: command,
+          interactive: interactive,
+          writeWorkspace: write)
     }
   }
 
@@ -41,11 +66,14 @@ struct ContainerPrimer: AsyncParsableCommand {
     var force = false
 
     @OptionGroup var source: SourceOptions
+    @OptionGroup var prepareOptions: PrepareOptions
 
     func run() async throws {
       let cacheStore = try CacheStore.default()
       try await RootfsPreparer(cacheStore: cacheStore)
-        .prepare(source: try source.makeSource(), force: force)
+        .prepare(
+          source: try source.makeSource(), force: force,
+          diskSizeInBytes: try prepareOptions.diskSizeInBytes)
     }
   }
 
@@ -63,6 +91,20 @@ struct ContainerPrimer: AsyncParsableCommand {
       }
       try FileManager.default.removeItem(at: cacheStore.base)
       print("Removed \(cacheStore.base.path)")
+    }
+  }
+}
+
+/// Options controlling how the rootfs snapshot is built.
+struct PrepareOptions: ParsableArguments {
+  @Option(name: .long, help: "Usable rootfs capacity in GiB.")
+  var diskSize: Int = 8
+
+  /// The requested capacity in bytes.
+  var diskSizeInBytes: UInt64 {
+    get throws {
+      guard diskSize > 0 else { throw ValidationError("--disk-size must be greater than 0.") }
+      return diskSize.gib()
     }
   }
 }
