@@ -1,23 +1,23 @@
 import Foundation
 
-/// System cache locations for ContainerPrimer, under Application Support.
+/// System cache locations for AgentWrap, under Application Support.
 ///
 /// Holds the auto-downloaded kernel and one rootfs snapshot per image cache key.
 /// These are expensive to regenerate (kernel download, container-engine build),
 /// so they live in a persistent location instead of a purgeable cache.
 struct CacheStore {
-  /// Root of the cache, e.g. `~/Library/Application Support/ContainerPrimer`.
+  /// Root of the cache, e.g. `~/Library/Application Support/AgentWrap`.
   let base: URL
 
   init(base: URL) {
     self.base = base
   }
 
-  /// The per-user cache under `Application Support/ContainerPrimer`.
+  /// The per-user cache under `Application Support/AgentWrap`.
   static func `default`() throws -> CacheStore {
     let appSupport = try FileManager.default.url(
       for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-    return CacheStore(base: appSupport.appendingPathComponent("ContainerPrimer", isDirectory: true))
+    return CacheStore(base: appSupport.appendingPathComponent("AgentWrap", isDirectory: true))
   }
 
   /// Cached Linux kernel (`vmlinux`), auto-downloaded on first use.

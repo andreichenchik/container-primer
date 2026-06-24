@@ -1,6 +1,6 @@
 import Testing
 
-@testable import ContainerPrimer
+@testable import AgentWrap
 
 @Suite struct ProcNetParserTests {
   /// A realistic `/proc/net/tcp` header line; the parser must skip it.

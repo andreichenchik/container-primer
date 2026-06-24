@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "ContainerPrimer",
+    name: "AgentWrap",
     platforms: [
         .macOS("26.0")
     ],
     products: [
         .executable(
-            name: "container-primer",
-            targets: ["ContainerPrimer"]
+            name: "agent-wrap",
+            targets: ["AgentWrap"]
         )
     ],
     dependencies: [
@@ -18,7 +18,7 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "ContainerPrimer",
+            name: "AgentWrap",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Containerization", package: "containerization"),
@@ -27,8 +27,8 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "ContainerPrimerTests",
-            dependencies: ["ContainerPrimer"]
+            name: "AgentWrapTests",
+            dependencies: ["AgentWrap"]
         ),
     ]
 )

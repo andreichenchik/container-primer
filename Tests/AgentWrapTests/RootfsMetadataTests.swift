@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import ContainerPrimer
+@testable import AgentWrap
 
 @Suite struct RootfsMetadataTests {
   @Test func writeThenLoadRoundTrips() throws {

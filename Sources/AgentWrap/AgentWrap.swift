@@ -2,12 +2,13 @@ import ArgumentParser
 import ContainerizationOS
 import Foundation
 
-/// Command-line entry point. `run` boots a container from a prepared rootfs
-/// snapshot; `prepare` builds that snapshot; `clean` clears the cache.
+/// Command-line entry point. `run` boots an agent container from a prepared
+/// rootfs snapshot; `prepare` builds that snapshot; `clean` clears the cache.
 @main
-struct ContainerPrimer: AsyncParsableCommand {
+struct AgentWrap: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
-    abstract: "Build or pull a container image and run it in a lightweight Linux VM.",
+    commandName: "agent-wrap",
+    abstract: "Run a containerized agent in a lightweight, sandboxed Linux VM.",
     subcommands: [Run.self, Prepare.self, Clean.self],
     defaultSubcommand: Run.self
   )

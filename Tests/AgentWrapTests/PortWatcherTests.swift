@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import ContainerPrimer
+@testable import AgentWrap
 
 @Suite struct PortWatcherTests {
   /// Returns canned `/proc/net/tcp` text, simulating a service that only starts

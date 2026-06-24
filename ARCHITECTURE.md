@@ -1,6 +1,6 @@
 # Architecture
 
-ContainerPrimer is a self-contained Swift binary built on Apple's
+AgentWrap is a self-contained Swift binary built on Apple's
 [Containerization](https://github.com/apple/containerization) framework. It builds or pulls a
 container image, caches a Linux root filesystem snapshot from it, and boots a lightweight VM that
 mounts the host `workspace/` read-only and runs the image's own `ENTRYPOINT`. The Swift side never
@@ -12,7 +12,7 @@ Swift instead of bash.
 
 ```
 ┌─ host (macOS) ─────────────────────────────────────────────┐
-│  ContainerPrimer binary                                     │
+│  AgentWrap binary                                     │
 │    image source ──► OCI image (in framework store)          │
 │      --build-image: container build → temp OCI tar          │
 │      --image:       registry pull                           │
@@ -53,8 +53,8 @@ context changes its cache key, so the next run rebuilds and re-prepares automati
 
 | Location                                                 | Holds                                   |
 | -------------------------------------------------------- | --------------------------------------- |
-| `~/Library/Application Support/ContainerPrimer/kernel/`  | `vmlinux`, auto-downloaded once         |
-| `~/Library/Application Support/ContainerPrimer/snapshots/<key>/` | `rootfs.ext4` + `rootfs.json` per source |
+| `~/Library/Application Support/AgentWrap/kernel/`  | `vmlinux`, auto-downloaded once         |
+| `~/Library/Application Support/AgentWrap/snapshots/<key>/` | `rootfs.ext4` + `rootfs.json` per source |
 | `~/Library/Application Support/com.apple.containerization` | OCI images (framework's own store)    |
 
 `<key>` is a SHA-256 derived from the source: the reference string for a registry pull, or a
@@ -62,12 +62,12 @@ fingerprint (path + size + mtime of every context file plus the Containerfile) f
 sources therefore get distinct snapshots, and an unchanged build context skips the engine entirely.
 The intermediate build archive (`image → tar → snapshot`) is temporary and never kept.
 
-## Host binary (`Sources/ContainerPrimer/`)
+## Host binary (`Sources/AgentWrap/`)
 
 Swift 6.2 executable. Depends on `Containerization`, `ContainerizationOS`, `ContainerizationArchive`
 (Apple), `ArgumentParser`, and `CryptoKit` (system, for cache-key hashing).
 
-### Entry point — `ContainerPrimer.swift`
+### Entry point — `AgentWrap.swift`
 `@main` `AsyncParsableCommand` with `run` (default), `prepare`, and `clean`. `SourceOptions` is a
 shared `ParsableArguments` group exposing `--image` / `--build-image`; `makeSource()` validates that
 exactly one is given and resolves `--build-image` into a context dir + Containerfile.
@@ -158,7 +158,7 @@ an in-memory OpenAI-compatible provider/model via `@earendil-works/pi-coding-age
 The agent only reads the mounted workspace, and the mount is read-only, so a request can't modify
 host files.
 
-## Tests (`Tests/ContainerPrimerTests/`)
+## Tests (`Tests/AgentWrapTests/`)
 
 Swift Testing over the pure host logic:
 - `DotEnvTests` — parsing edge cases.

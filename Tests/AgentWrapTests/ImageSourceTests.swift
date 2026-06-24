@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import ContainerPrimer
+@testable import AgentWrap
 
 @Suite struct ImageSourceTests {
   private func metadata(cacheKey: String) -> RootfsMetadata {

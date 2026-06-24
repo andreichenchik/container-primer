@@ -1,20 +1,20 @@
 SWIFT := $(shell which swift)
 
-BIN_RELEASE := .build/release/container-primer
-BIN_DEBUG := .build/debug/container-primer
-ENTITLEMENTS := ContainerPrimer.entitlements
+BIN_RELEASE := .build/release/agent-wrap
+BIN_DEBUG := .build/debug/agent-wrap
+ENTITLEMENTS := AgentWrap.entitlements
 
 EXAMPLE_IMAGE := example/image
 EXAMPLE_WORKSPACE := example/workspace
 # Registry reference for `make from-image`; override on the command line.
 IMAGE ?= docker.io/library/nginx:latest
 
-REPO := andreichenchik/container-primer
+REPO := andreichenchik/agent-wrap
 TAP_REPO := andreichenchik/homebrew-tap
 DIST := dist
 TAP_DIR := $(DIST)/homebrew-tap
-TAP_FORMULA := $(TAP_DIR)/Formula/container-primer.rb
-TARBALL := container-primer-$(VERSION)-arm64-macos.tar.gz
+TAP_FORMULA := $(TAP_DIR)/Formula/agent-wrap.rb
+TARBALL := agent-wrap-$(VERSION)-arm64-macos.tar.gz
 
 .PHONY: all run from-image prepare debug build-release build-debug release clean clean-cache fmt
 
@@ -59,9 +59,9 @@ release:
 	  sed -i '' -E "s/^  version \".*\"/  version \"$(VERSION)\"/" $(TAP_FORMULA); \
 	  sed -i '' -E "s/^  sha256 \".*\"/  sha256 \"$$SHA\"/" $(TAP_FORMULA); \
 	  echo "Bumped tap formula: version $(VERSION), sha256 $$SHA"
-	cd $(TAP_DIR) && git add Formula/container-primer.rb \
-	  && git commit -m "container-primer $(VERSION)" && git push
-	@echo "Released v$(VERSION). Install: brew install andreichenchik/tap/container-primer"
+	cd $(TAP_DIR) && git add Formula/agent-wrap.rb \
+	  && git commit -m "agent-wrap $(VERSION)" && git push
+	@echo "Released v$(VERSION). Install: brew install andreichenchik/tap/agent-wrap"
 
 # Remove the cached kernel and rootfs snapshots from Application Support.
 clean-cache: build-release

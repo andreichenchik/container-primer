@@ -1,6 +1,6 @@
 import Testing
 
-@testable import ContainerPrimer
+@testable import AgentWrap
 
 @Suite struct CacheKeyTests {
   @Test func hashingIsDeterministic() {
